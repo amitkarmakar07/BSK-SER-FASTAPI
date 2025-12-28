@@ -70,6 +70,7 @@ logs/
 data/ml_provision.csv
 data/new_ml_provision.csv
 data/new_ml_service_master.csv
+*.bak
 
 # Large model files
 *.bin
@@ -78,3 +79,5 @@ data/new_ml_service_master.csv
 # Temporary files
 *.tmp
 *.temp
+trim_csv.py
+check_header.py

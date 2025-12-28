@@ -241,7 +241,7 @@ def get_citizen_ids_by_phone(phone):
 
 if mode == "Phone Number":
     phone = st.text_input("Enter Phone Number:", placeholder="e.g., 76026XXXXX")
-    st.caption("💡 Try sample phone numbers: 7602690034, 8016167177, 7001337407")
+    st.caption("💡 Try sample phone numbers: 9800361474, 8293058992, 9845120211")
     if phone:
         citizens_df = get_citizen_ids_by_phone(phone)
         if not citizens_df.empty:

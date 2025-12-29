@@ -59,14 +59,15 @@ async def lifespan(app: FastAPI):
                     'citizen_id': 'str',
                     'gender': 'category',
                     'caste': 'category',
-                    'age': 'int16',
                     'religion': 'category',
-                    'district_id': 'int16',
                     'age_group': 'category',
                     'religion_group': 'category'
                 },
                 chunksize=chunk_size
             ):
+                # Fill NAs and convert integer columns
+                chunk['age'] = pd.to_numeric(chunk['age'], errors='coerce').fillna(0).astype('int16')
+                chunk['district_id'] = pd.to_numeric(chunk['district_id'], errors='coerce').fillna(0).astype('int16')
                 # Sample 30% of each chunk
                 sampled_chunks.append(chunk.sample(frac=0.3, random_state=42))
             
@@ -101,12 +102,13 @@ async def lifespan(app: FastAPI):
                     'citizen_name': 'str',
                     'citizen_phone': 'int64',
                     'gender': 'category',
-                    'age': 'int16',
                     'caste': 'category',
-                    'religion': 'category',
-                    'district_id': 'int16'
+                    'religion': 'category'
                 }
             )
+            # Handle NA values in numeric columns
+            citizen_master_full['age'] = pd.to_numeric(citizen_master_full['age'], errors='coerce').fillna(0).astype('int16')
+            citizen_master_full['district_id'] = pd.to_numeric(citizen_master_full['district_id'], errors='coerce').fillna(0).astype('int16')
             # Keep 40% sample but ensure unique phone numbers are distributed
             citizen_master = citizen_master_full.sample(frac=0.4, random_state=42)
             del citizen_master_full  # Free memory

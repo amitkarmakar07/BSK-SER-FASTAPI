@@ -30,10 +30,18 @@ async def lifespan(app: FastAPI):
     global citizen_master, provision_data, district_df, service_master_df
     
     try:
-        # Load CSVs
+        # Load essential CSVs
         grouped_df = pd.read_csv(os.path.join(DATA_DIR, "grouped_df.csv"), encoding="latin-1")
         service_df = pd.read_csv(os.path.join(DATA_DIR, "services.csv"), encoding="latin-1")
-        final_df = pd.read_csv(os.path.join(DATA_DIR, "final_df.csv"), encoding="latin-1")
+        
+        # Load final_df only if available (large file, may not be in deployment)
+        final_df_path = os.path.join(DATA_DIR, "final_df.csv")
+        if os.path.exists(final_df_path):
+            final_df = pd.read_csv(final_df_path, encoding="latin-1")
+            print("✅ Loaded final_df.csv")
+        else:
+            final_df = pd.DataFrame()  # Empty fallback
+            print("⚠️ final_df.csv not found - using fallback")
         
         # Load cluster map
         with open(os.path.join(DATA_DIR, "cluster_service_map.pkl"), "rb") as f:
@@ -43,12 +51,23 @@ async def lifespan(app: FastAPI):
         df_service_names = pd.read_csv(os.path.join(DATA_DIR, "service_id_with_name.csv"), encoding="latin-1")
         service_id_to_name = dict(zip(df_service_names['service_id'], df_service_names['service_name']))
         
-        # Load citizen and provision data
+        # Load citizen and provision data (optional large files)
         citizen_master_path = os.path.join(DATA_DIR, "ml_citizen_master.csv")
         provision_path = os.path.join(DATA_DIR, "ml_provision.csv")
         
-        citizen_master = pd.read_csv(citizen_master_path, encoding="latin-1") if os.path.exists(citizen_master_path) else pd.DataFrame()
-        provision_data = pd.read_csv(provision_path, encoding="latin-1") if os.path.exists(provision_path) else pd.DataFrame()
+        if os.path.exists(citizen_master_path):
+            citizen_master = pd.read_csv(citizen_master_path, encoding="latin-1")
+            print("✅ Loaded ml_citizen_master.csv")
+        else:
+            citizen_master = pd.DataFrame()
+            print("⚠️ ml_citizen_master.csv not found - phone search disabled")
+            
+        if os.path.exists(provision_path):
+            provision_data = pd.read_csv(provision_path, encoding="latin-1")
+            print("✅ Loaded ml_provision.csv")
+        else:
+            provision_data = pd.DataFrame()
+            print("⚠️ ml_provision.csv not found - service history disabled")
         
         # Load district and service master
         district_df = pd.read_csv(os.path.join(DATA_DIR, "district_top_services.csv"), encoding="utf-8")
@@ -57,7 +76,7 @@ async def lifespan(app: FastAPI):
         # Filter out birth/death services
         service_master_df = service_master_df[~service_master_df['service_name'].str.lower().str.contains('birth|death', na=False)]
         
-        print("✅ All data loaded successfully")
+        print("✅ Essential data loaded successfully")
     except Exception as e:
         print(f"❌ Error loading data: {e}")
         raise
@@ -196,6 +215,9 @@ async def get_services():
 @app.get("/api/citizen/phone/{phone}")
 async def get_citizen_by_phone_api(phone: str):
     """Get citizen details by phone number"""
+    if citizen_master.empty:
+        raise HTTPException(status_code=503, detail="Citizen database not available in this deployment. Please use manual entry mode.")
+    
     citizens_df = get_citizen_by_phone(phone)
     
     if citizens_df.empty:

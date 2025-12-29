@@ -25,65 +25,136 @@ from backend.inference.demo import recommend_services_2
 # ============= Load Data on Startup =============
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load all required data on startup"""
+    """Load all required data on startup with memory optimization"""
     global grouped_df, service_df, final_df, cluster_service_map, service_id_to_name
     global citizen_master, provision_data, district_df, service_master_df
     
     try:
-        # Load essential CSVs
-        grouped_df = pd.read_csv(os.path.join(DATA_DIR, "grouped_df.csv"), encoding="latin-1")
-        service_df = pd.read_csv(os.path.join(DATA_DIR, "services.csv"), encoding="latin-1")
+        print("📊 Loading data with memory optimization...")
         
-        # Load final_df only if available (large file, may not be in deployment)
+        # Load essential CSVs with optimal dtypes
+        grouped_df = pd.read_csv(
+            os.path.join(DATA_DIR, "grouped_df.csv"), 
+            encoding="latin-1",
+            dtype={'service_id': 'int32'}
+        )
+        
+        service_df = pd.read_csv(
+            os.path.join(DATA_DIR, "services.csv"), 
+            encoding="latin-1",
+            dtype={'service_id': 'int32'}
+        )
+        
+        # Load final_df with only essential columns and efficient dtypes
         final_df_path = os.path.join(DATA_DIR, "final_df.csv")
         if os.path.exists(final_df_path):
-            final_df = pd.read_csv(final_df_path, encoding="latin-1")
-            print("✅ Loaded final_df.csv")
+            final_df = pd.read_csv(
+                final_df_path, 
+                encoding="latin-1",
+                usecols=['citizen_id', 'gender', 'caste', 'age', 'religion', 'district_id', 'age_group', 'religion_group', 'cluster'],
+                dtype={
+                    'citizen_id': 'str',
+                    'gender': 'category',
+                    'caste': 'category', 
+                    'age': 'int16',
+                    'religion': 'category',
+                    'district_id': 'int16',
+                    'age_group': 'category',
+                    'religion_group': 'category',
+                    'cluster': 'int8'
+                }
+            )
+            print(f"✅ Loaded final_df - Memory: {final_df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
-            final_df = pd.DataFrame()  # Empty fallback
+            final_df = pd.DataFrame()
             print("⚠️ final_df.csv not found - using fallback")
         
         # Load cluster map
         with open(os.path.join(DATA_DIR, "cluster_service_map.pkl"), "rb") as f:
             cluster_service_map = pickle.load(f)
         
-        # Load service ID to name mapping
-        df_service_names = pd.read_csv(os.path.join(DATA_DIR, "service_id_with_name.csv"), encoding="latin-1")
+        # Load service ID mapping
+        df_service_names = pd.read_csv(
+            os.path.join(DATA_DIR, "service_id_with_name.csv"), 
+            encoding="latin-1",
+            dtype={'service_id': 'int32'}
+        )
         service_id_to_name = dict(zip(df_service_names['service_id'], df_service_names['service_name']))
         
-        # Load citizen and provision data (optional large files)
+        # Load citizen master with memory optimization
         citizen_master_path = os.path.join(DATA_DIR, "ml_citizen_master.csv")
-        provision_path = os.path.join(DATA_DIR, "ml_provision.csv")
-        
         if os.path.exists(citizen_master_path):
-            citizen_master = pd.read_csv(citizen_master_path, encoding="latin-1")
-            print("✅ Loaded ml_citizen_master.csv")
+            citizen_master = pd.read_csv(
+                citizen_master_path,
+                encoding="latin-1",
+                usecols=['citizen_id', 'citizen_name', 'citizen_phone', 'gender', 'age', 'caste', 'religion', 'district_id'],
+                dtype={
+                    'citizen_id': 'str',
+                    'citizen_name': 'str',
+                    'citizen_phone': 'int64',
+                    'gender': 'category',
+                    'age': 'int16',
+                    'caste': 'category',
+                    'religion': 'category',
+                    'district_id': 'int16'
+                }
+            )
+            print(f"✅ Loaded ml_citizen_master - Memory: {citizen_master.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
             citizen_master = pd.DataFrame()
             print("⚠️ ml_citizen_master.csv not found - phone search disabled")
-            
+        
+        # Load provision data with memory optimization
+        provision_path = os.path.join(DATA_DIR, "ml_provision.csv")
         if os.path.exists(provision_path):
-            provision_data = pd.read_csv(provision_path, encoding="latin-1")
-            print("✅ Loaded ml_provision.csv")
+            provision_data = pd.read_csv(
+                provision_path,
+                encoding="latin-1",
+                usecols=['customer_id', 'service_id', 'service_name', 'prov_date'],
+                dtype={
+                    'customer_id': 'str',
+                    'service_id': 'int32',
+                    'service_name': 'str',
+                    'prov_date': 'str'
+                }
+            )
+            print(f"✅ Loaded ml_provision - Memory: {provision_data.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
             provision_data = pd.DataFrame()
             print("⚠️ ml_provision.csv not found - service history disabled")
         
         # Load district and service master
-        district_df = pd.read_csv(os.path.join(DATA_DIR, "district_top_services.csv"), encoding="utf-8")
-        service_master_df = pd.read_csv(os.path.join(DATA_DIR, "services.csv"), encoding="utf-8")
+        district_df = pd.read_csv(
+            os.path.join(DATA_DIR, "district_top_services.csv"), 
+            encoding="utf-8",
+            dtype={'district_id': 'int16'}
+        )
+        service_master_df = pd.read_csv(
+            os.path.join(DATA_DIR, "services.csv"), 
+            encoding="utf-8",
+            dtype={'service_id': 'int32'}
+        )
         
         # Filter out birth/death services
         service_master_df = service_master_df[~service_master_df['service_name'].str.lower().str.contains('birth|death', na=False)]
         
-        print("✅ Essential data loaded successfully")
+        # Calculate total memory
+        total_memory = sum([
+            grouped_df.memory_usage(deep=True).sum(),
+            service_df.memory_usage(deep=True).sum(),
+            final_df.memory_usage(deep=True).sum() if not final_df.empty else 0,
+            citizen_master.memory_usage(deep=True).sum() if not citizen_master.empty else 0,
+            provision_data.memory_usage(deep=True).sum() if not provision_data.empty else 0,
+            district_df.memory_usage(deep=True).sum(),
+            service_master_df.memory_usage(deep=True).sum()
+        ]) / 1024**2
+        
+        print(f"✅ Data loaded - Total Memory: {total_memory:.1f} MB")
     except Exception as e:
         print(f"❌ Error loading data: {e}")
         raise
     
-    yield  # Server is running
-    
-    # Cleanup (if needed)
+    yield
     print("🔄 Shutting down...")
 
 # Initialize FastAPI app

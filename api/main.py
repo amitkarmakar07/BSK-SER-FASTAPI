@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
             for chunk in pd.read_csv(
                 final_df_path,
                 encoding="latin-1",
-                usecols=['citizen_id', 'gender', 'caste', 'age', 'religion', 'district_id', 'age_group', 'religion_group', 'cluster'],
+                usecols=['citizen_id', 'gender', 'caste', 'age', 'religion', 'district_id', 'age_group', 'religion_group'],
                 dtype={
                     'citizen_id': 'str',
                     'gender': 'category',
@@ -63,8 +63,7 @@ async def lifespan(app: FastAPI):
                     'religion': 'category',
                     'district_id': 'int16',
                     'age_group': 'category',
-                    'religion_group': 'category',
-                    'cluster': 'int8'
+                    'religion_group': 'category'
                 },
                 chunksize=chunk_size
             ):

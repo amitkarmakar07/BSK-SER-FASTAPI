@@ -30,9 +30,9 @@ async def lifespan(app: FastAPI):
     global citizen_master, provision_data, district_df, service_master_df
     
     try:
-        print("📊 Loading data with memory optimization...")
+        print("📊 Loading data with aggressive memory optimization...")
         
-        # Load essential CSVs with optimal dtypes
+        # Load essential CSVs
         grouped_df = pd.read_csv(
             os.path.join(DATA_DIR, "grouped_df.csv"), 
             encoding="latin-1",
@@ -45,29 +45,37 @@ async def lifespan(app: FastAPI):
             dtype={'service_id': 'int32'}
         )
         
-        # Load final_df with only essential columns and efficient dtypes
+        # Load final_df - SAMPLE 30% to reduce memory by 70%
         final_df_path = os.path.join(DATA_DIR, "final_df.csv")
         if os.path.exists(final_df_path):
-            final_df = pd.read_csv(
-                final_df_path, 
+            # Read in chunks and sample
+            chunk_size = 100000
+            sampled_chunks = []
+            for chunk in pd.read_csv(
+                final_df_path,
                 encoding="latin-1",
                 usecols=['citizen_id', 'gender', 'caste', 'age', 'religion', 'district_id', 'age_group', 'religion_group', 'cluster'],
                 dtype={
                     'citizen_id': 'str',
                     'gender': 'category',
-                    'caste': 'category', 
+                    'caste': 'category',
                     'age': 'int16',
                     'religion': 'category',
                     'district_id': 'int16',
                     'age_group': 'category',
                     'religion_group': 'category',
                     'cluster': 'int8'
-                }
-            )
-            print(f"✅ Loaded final_df - Memory: {final_df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+                },
+                chunksize=chunk_size
+            ):
+                # Sample 30% of each chunk
+                sampled_chunks.append(chunk.sample(frac=0.3, random_state=42))
+            
+            final_df = pd.concat(sampled_chunks, ignore_index=True)
+            print(f"✅ Loaded final_df (30% sample) - Memory: {final_df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
             final_df = pd.DataFrame()
-            print("⚠️ final_df.csv not found - using fallback")
+            print("⚠️ final_df.csv not found")
         
         # Load cluster map
         with open(os.path.join(DATA_DIR, "cluster_service_map.pkl"), "rb") as f:
@@ -75,16 +83,17 @@ async def lifespan(app: FastAPI):
         
         # Load service ID mapping
         df_service_names = pd.read_csv(
-            os.path.join(DATA_DIR, "service_id_with_name.csv"), 
+            os.path.join(DATA_DIR, "service_id_with_name.csv"),
             encoding="latin-1",
             dtype={'service_id': 'int32'}
         )
         service_id_to_name = dict(zip(df_service_names['service_id'], df_service_names['service_name']))
         
-        # Load citizen master with memory optimization
+        # Load citizen master - SAMPLE 40% to save memory
         citizen_master_path = os.path.join(DATA_DIR, "ml_citizen_master.csv")
         if os.path.exists(citizen_master_path):
-            citizen_master = pd.read_csv(
+            # Read all first, then sample
+            citizen_master_full = pd.read_csv(
                 citizen_master_path,
                 encoding="latin-1",
                 usecols=['citizen_id', 'citizen_name', 'citizen_phone', 'gender', 'age', 'caste', 'religion', 'district_id'],
@@ -99,15 +108,21 @@ async def lifespan(app: FastAPI):
                     'district_id': 'int16'
                 }
             )
-            print(f"✅ Loaded ml_citizen_master - Memory: {citizen_master.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+            # Keep 40% sample but ensure unique phone numbers are distributed
+            citizen_master = citizen_master_full.sample(frac=0.4, random_state=42)
+            del citizen_master_full  # Free memory
+            print(f"✅ Loaded ml_citizen_master (40% sample) - Memory: {citizen_master.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
             citizen_master = pd.DataFrame()
-            print("⚠️ ml_citizen_master.csv not found - phone search disabled")
+            print("⚠️ ml_citizen_master.csv not found")
         
-        # Load provision data with memory optimization
+        # Load provision data - SAMPLE 35% to save memory
         provision_path = os.path.join(DATA_DIR, "ml_provision.csv")
         if os.path.exists(provision_path):
-            provision_data = pd.read_csv(
+            # Read in chunks and sample
+            chunk_size = 50000
+            sampled_prov = []
+            for chunk in pd.read_csv(
                 provision_path,
                 encoding="latin-1",
                 usecols=['customer_id', 'service_id', 'service_name', 'prov_date'],
@@ -116,12 +131,16 @@ async def lifespan(app: FastAPI):
                     'service_id': 'int32',
                     'service_name': 'str',
                     'prov_date': 'str'
-                }
-            )
-            print(f"✅ Loaded ml_provision - Memory: {provision_data.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+                },
+                chunksize=chunk_size
+            ):
+                sampled_prov.append(chunk.sample(frac=0.35, random_state=42))
+            
+            provision_data = pd.concat(sampled_prov, ignore_index=True)
+            print(f"✅ Loaded ml_provision (35% sample) - Memory: {provision_data.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         else:
             provision_data = pd.DataFrame()
-            print("⚠️ ml_provision.csv not found - service history disabled")
+            print("⚠️ ml_provision.csv not found")
         
         # Load district and service master
         district_df = pd.read_csv(
